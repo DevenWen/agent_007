@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Platform - Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6366f1',
+                        secondary: '#8b5cf6',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .scroll-area {
+            scrollbar-width: thin;
+            scrollbar-color: #d1d5db transparent;
+        }
+
+        .scroll-area::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scroll-area::-webkit-scrollbar-thumb {
+            background-color: #d1d5db;
+            border-radius: 3px;
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .animate-pulse-dot {
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+    <!-- App Container -->
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-56 bg-slate-800 border-r border-slate-700 flex flex-col">
+            <!-- Logo -->
+            <div class="p-4 border-b border-slate-700">
+                <h1 class="text-xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                    🤖 Agent Platform
+                </h1>
+            </div>
+            <!-- Navigation -->
+            <nav class="flex-1 p-3 space-y-1">
+                <a href="#" onclick="showView('tickets')" id="nav-tickets"
+                    class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-700 text-white">
+                    <span>📋</span><span>Tickets</span>
+                    <span class="ml-auto bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full">3</span>
+                </a>
+                <a href="#" onclick="showView('agents')" id="nav-agents"
+                    class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-white transition">
+                    <span>🧠</span><span>Agents</span>
+                </a>
+                <a href="#" onclick="showView('sessions')" id="nav-sessions"
+                    class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-white transition">
+                    <span>💬</span><span>Sessions</span>
+                </a>
+                <a href="#" onclick="showView('tools')" id="nav-tools"
+                    class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-white transition">
+                    <span>🔧</span><span>Tools</span>
+                </a>
+            </nav>
+            <!-- Footer -->
+            <div class="p-3 border-t border-slate-700 text-xs text-slate-500">
+                Prototype v0.0.1
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <!-- Header -->
+            <header class="h-14 bg-slate-800 border-b border-slate-700 px-6 flex items-center justify-between">
+                <h2 id="page-title" class="text-lg font-semibold">Tickets</h2>
+                <button onclick="createTicket()" id="create-btn"
+                    class="px-4 py-2 bg-primary hover:bg-primary/80 rounded-lg text-sm font-medium transition">
+                    + New Ticket
+                </button>
+            </header>
+
+            <!-- Content Area -->
+            <div id="content" class="flex-1 overflow-auto scroll-area p-6">
+                <!-- Dynamic content here -->
+            </div>
+        </main>
+
+        <!-- Detail Panel (Slide-in) -->
+        <aside id="detail-panel"
+            class="w-[500px] bg-slate-800 border-l border-slate-700 transform translate-x-full transition-transform duration-300 fixed right-0 top-0 h-full z-50 flex flex-col">
+            <div class="p-4 border-b border-slate-700 flex items-center justify-between">
+                <h3 id="detail-title" class="font-semibold">Detail</h3>
+                <button onclick="closeDetail()" class="p-1 hover:bg-slate-700 rounded">✕</button>
+            </div>
+            <div id="detail-content" class="flex-1 overflow-auto scroll-area p-4">
+                <!-- Detail content here -->
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // ==================== Mock Data ====================
+        const mockData = {
+            agents: [
+                {
+                    id: "agent-code-review",
+                    name: "Code Review Agent",
+                    description: "自动审查代码质量，检测安全漏洞和代码异味",
+                    prompt: "You are a senior code reviewer. Focus on:\n1. Security vulnerabilities\n2. Code smells\n3. Best practices\n\nProvide actionable feedback.",
+                    toolIds: ["tool-read-file", "tool-search-code", "tool-http-req"],
+                    createdAt: "2024-01-10T08:00:00Z"
+                },
+                {
+                    id: "agent-data-analyst",
+                    name: "Data Analyst Agent",
+                    description: "分析数据并生成报告，支持多种数据源",
+                    prompt: "You are a data analyst. Analyze data and provide insights.",
+                    toolIds: ["tool-http-req", "tool-fetch-web"],
+                    createdAt: "2024-01-12T10:00:00Z"
+                }
+            ],
+            tools: [
+                { id: "tool-read-file", name: "read_file", description: "读取文件内容", schema: { type: "object", properties: { path: { type: "string" } } } },
+                { id: "tool-write-file", name: "write_file", description: "写入文件内容", schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } } } },
+                { id: "tool-exec-cmd", name: "execute_command", description: "执行 shell 命令", schema: { type: "object", properties: { command: { type: "string" } } } },
+                { id: "tool-search-code", name: "search_code", description: "搜索代码", schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" } } } },
+                { id: "tool-http-req", name: "http_request", description: "发送 HTTP 请求", schema: { type: "object", properties: { url: { type: "string" }, method: { type: "string" } } } },
+                { id: "tool-fetch-web", name: "fetch_webpage", description: "抓取网页内容", schema: { type: "object", properties: { url: { type: "string" } } } }
+            ],
+            tickets: [
+                {
+                    id: "550e8400-e29b-41d4-a716-446655440001",
+                    agentId: "agent-code-review",
+                    agentName: "Code Review Agent",
+                    status: "running",
+                    params: { repository: "https://github.com/example/repo", branch: "main" },
+                    context: { goal: "Review PR #123", constraints: ["Focus on security"] },
+                    errorMessage: null,
+                    steps: [
+                        { index: 0, title: "Fetch repository", status: "completed", result: { files: 42 } },
+                        { index: 1, title: "Analyze code structure", status: "running", result: null }
+                    ],
+                    currentSessionId: "session-001",
+                    createdAt: "2024-01-15T10:00:00Z",
+                    updatedAt: "2024-01-15T10:30:00Z"
+                },
+                {
+                    id: "550e8400-e29b-41d4-a716-446655440002",
+                    agentId: "agent-code-review",
+                    agentName: "Code Review Agent",
+                    status: "suspended",
+                    params: { repository: "https://github.com/example/auth", branch: "develop" },
+                    context: { goal: "Security audit" },
+                    errorMessage: null,
+                    steps: [
+                        { index: 0, title: "Fetch repository", status: "completed", result: { files: 18 } },
+                        { index: 1, title: "Run security scan", status: "completed", result: { issues: 3 } },
+                        { index: 2, title: "Awaiting human review", status: "pending", result: null }
+                    ],
+                    currentSessionId: "session-002",
+                    createdAt: "2024-01-14T09:00:00Z",
+                    updatedAt: "2024-01-14T15:00:00Z"
+                },
+                {
+                    id: "550e8400-e29b-41d4-a716-446655440003",
+                    agentId: "agent-data-analyst",
+                    agentName: "Data Analyst Agent",
+                    status: "completed",
+                    params: { dataSource: "sales_2024.csv" },
+                    context: { goal: "Monthly sales analysis" },
+                    errorMessage: null,
+                    steps: [
+                        { index: 0, title: "Load data", status: "completed", result: { rows: 1500 } },
+                        { index: 1, title: "Generate report", status: "completed", result: { pdfUrl: "/reports/sales.pdf" } }
+                    ],
+                    currentSessionId: "session-003",
+                    createdAt: "2024-01-13T08:00:00Z",
+                    updatedAt: "2024-01-13T08:45:00Z"
+                }
+            ],
+            sessions: [
+                {
+                    id: "session-001",
+                    ticketId: "550e8400-e29b-41d4-a716-446655440001",
+                    status: "active",
+                    context: { currentStep: 1 },
+                    messages: [
+                        { id: 1, role: "system", content: "You are a code review agent...", timestamp: "2024-01-15T10:00:00Z" },
+                        { id: 2, role: "assistant", content: "开始分析代码仓库...", timestamp: "2024-01-15T10:01:00Z" },
+                        { id: 3, role: "tool", content: '{"tool": "read_file", "result": "success", "files": 42}', timestamp: "2024-01-15T10:02:00Z" },
+                        { id: 4, role: "assistant", content: "已获取 42 个文件，正在分析代码结构...", timestamp: "2024-01-15T10:03:00Z" }
+                    ],
+                    createdAt: "2024-01-15T10:00:00Z",
+                    updatedAt: "2024-01-15T10:30:00Z"
+                },
+                {
+                    id: "session-002",
+                    ticketId: "550e8400-e29b-41d4-a716-446655440002",
+                    status: "suspended",
+                    context: { currentStep: 2, issues: ["SQL injection risk in login.py", "Hardcoded secret in config.py", "Weak password policy"] },
+                    messages: [
+                        { id: 1, role: "system", content: "You are a security audit agent...", timestamp: "2024-01-14T09:00:00Z" },
+                        { id: 2, role: "assistant", content: "开始安全扫描...", timestamp: "2024-01-14T09:01:00Z" },
+                        { id: 3, role: "tool", content: '{"tool": "search_code", "pattern": "password|secret|key"}', timestamp: "2024-01-14T09:05:00Z" },
+                        { id: 4, role: "assistant", content: "发现 3 个潜在安全问题，需要您确认：\n\n1. **SQL注入风险** - login.py:45\n2. **硬编码密钥** - config.py:12\n3. **弱密码策略** - auth.py:78\n\n请问这些问题是否需要修复？", timestamp: "2024-01-14T09:10:00Z" }
+                    ],
+                    createdAt: "2024-01-14T09:00:00Z",
+                    updatedAt: "2024-01-14T15:00:00Z"
+                },
+                {
+                    id: "session-003",
+                    ticketId: "550e8400-e29b-41d4-a716-446655440003",
+                    status: "completed",
+                    context: {},
+                    messages: [
+                        { id: 1, role: "system", content: "You are a data analyst...", timestamp: "2024-01-13T08:00:00Z" },
+                        { id: 2, role: "assistant", content: "分析完成，报告已生成。", timestamp: "2024-01-13T08:45:00Z" }
+                    ],
+                    createdAt: "2024-01-13T08:00:00Z",
+                    updatedAt: "2024-01-13T08:45:00Z"
+                }
+            ]
+        };
+
+        // ==================== View Controllers ====================
+        let currentView = 'tickets';
+
+        function showView(view) {
+            currentView = view;
+            closeDetail();
+
+            // Update nav
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.remove('bg-slate-700', 'text-white');
+                el.classList.add('text-slate-400');
+            });
+            document.getElementById(`nav-${view}`).classList.remove('text-slate-400');
+            document.getElementById(`nav-${view}`).classList.add('bg-slate-700', 'text-white');
+
+            // Update header
+            const titles = { tickets: 'Tickets', agents: 'Agents', sessions: 'Sessions', tools: 'Tools' };
+            document.getElementById('page-title').textContent = titles[view];
+            document.getElementById('create-btn').style.display = view === 'tickets' ? 'block' : 'none';
+
+            // Render content
+            const renderers = { tickets: renderTickets, agents: renderAgents, sessions: renderSessions, tools: renderTools };
+            renderers[view]();
+        }
+
+        // ==================== Ticket View ====================
+        function renderTickets() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="grid gap-4">
+                    ${mockData.tickets.map(ticket => `
+                        <div onclick="showTicketDetail('${ticket.id}')" 
+                             class="bg-slate-800 rounded-xl p-4 border border-slate-700 hover:border-primary/50 cursor-pointer transition group">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-3 mb-2">
+                                        <span class="text-slate-500 font-mono text-sm">#${ticket.id.slice(0, 8)}</span>
+                                        ${getStatusBadge(ticket.status)}
+                                    </div>
+                                    <h3 class="font-medium mb-1">${ticket.context.goal || 'Untitled Task'}</h3>
+                                    <div class="flex items-center gap-2 text-sm text-slate-400">
+                                        <span class="px-2 py-0.5 bg-slate-700 rounded text-xs">🧠 ${ticket.agentName}</span>
+                                        <span>•</span>
+                                        <span>${formatTime(ticket.updatedAt)}</span>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm text-slate-400 mb-1">Steps</div>
+                                    <div class="flex gap-1">
+                                        ${ticket.steps.map(s => getStepDot(s.status)).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function showTicketDetail(ticketId) {
+            const ticket = mockData.tickets.find(t => t.id === ticketId);
+            const session = mockData.sessions.find(s => s.id === ticket.currentSessionId);
+
+            document.getElementById('detail-title').textContent = `Ticket #${ticket.id.slice(0, 8)}`;
+            document.getElementById('detail-content').innerHTML = `
+                <div class="space-y-6">
+                    <!-- Status & Actions -->
+                    <div class="flex items-center justify-between">
+                        ${getStatusBadge(ticket.status, true)}
+                        <div class="flex gap-2">
+                            ${ticket.status === 'suspended' ? `
+                                <button onclick="resumeTicket('${ticket.id}')" 
+                                        class="px-3 py-1.5 bg-green-600 hover:bg-green-500 rounded-lg text-sm transition">
+                                    ▶ Resume
+                                </button>
+                            ` : ''}
+                            <button onclick="resetTicket('${ticket.id}')" 
+                                    class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition">
+                                ↺ Reset
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Info -->
+                    <div class="bg-slate-700/50 rounded-lg p-4 space-y-3">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-slate-400">Agent</span>
+                            <span class="px-2 py-0.5 bg-primary/20 text-primary rounded">🧠 ${ticket.agentName}</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-slate-400">Created</span>
+                            <span>${formatTime(ticket.createdAt)}</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-slate-400">Updated</span>
+                            <span>${formatTime(ticket.updatedAt)}</span>
+                        </div>
+                    </div>
+
+                    <!-- Steps -->
+                    <div>
+                        <h4 class="text-sm font-medium text-slate-400 mb-3">Steps</h4>
+                        <div class="space-y-2">
+                            ${ticket.steps.map((step, i) => `
+                                <div class="flex items-center gap-3 p-3 bg-slate-700/30 rounded-lg">
+                                    ${getStepIcon(step.status)}
+                                    <div class="flex-1">
+                                        <div class="font-medium text-sm">${step.title}</div>
+                                        ${step.result ? `<div class="text-xs text-slate-500 mt-1">${JSON.stringify(step.result)}</div>` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Context -->
+                    <div>
+                        <h4 class="text-sm font-medium text-slate-400 mb-3">Context</h4>
+                        <pre class="bg-slate-900 rounded-lg p-3 text-xs overflow-x-auto">${JSON.stringify(ticket.context, null, 2)}</pre>
+                    </div>
+
+                    <!-- Session Messages -->
+                    ${session ? `
+                        <div>
+                            <h4 class="text-sm font-medium text-slate-400 mb-3">Session Messages</h4>
+                            <div class="space-y-3 max-h-80 overflow-y-auto scroll-area">
+                                ${session.messages.map(msg => `
+                                    <div class="${getMsgAlign(msg.role)}">
+                                        <div class="${getMsgStyle(msg.role)}">
+                                            <div class="text-xs text-slate-500 mb-1">${msg.role}</div>
+                                            <div class="text-sm whitespace-pre-wrap">${formatMsgContent(msg)}</div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            ${session.status === 'suspended' ? `
+                                <div class="mt-4 flex gap-2">
+                                    <input type="text" id="human-input" placeholder="输入您的回复..." 
+                                           class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-primary">
+                                    <button onclick="sendHumanInput('${session.id}')" 
+                                            class="px-4 py-2 bg-primary hover:bg-primary/80 rounded-lg text-sm transition">
+                                        发送
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            openDetail();
+        }
+
+        // ==================== Agent View ====================
+        function renderAgents() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="grid gap-4 md:grid-cols-2">
+                    ${mockData.agents.map(agent => `
+                        <div onclick="showAgentDetail('${agent.id}')"
+                             class="bg-slate-800 rounded-xl p-5 border border-slate-700 hover:border-primary/50 cursor-pointer transition">
+                            <div class="flex items-center gap-3 mb-3">
+                                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-lg">
+                                    🧠
+                                </div>
+                                <div>
+                                    <h3 class="font-semibold">${agent.name}</h3>
+                                    <p class="text-sm text-slate-400">${agent.toolIds.length} tools</p>
+                                </div>
+                            </div>
+                            <p class="text-sm text-slate-400 mb-4">${agent.description}</p>
+                            <div class="flex flex-wrap gap-2">
+                                ${agent.toolIds.map(tid => {
+                const tool = mockData.tools.find(t => t.id === tid);
+                return `<span class="px-2 py-1 bg-slate-700 rounded text-xs">🔧 ${tool?.name || tid}</span>`;
+            }).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function showAgentDetail(agentId) {
+            const agent = mockData.agents.find(a => a.id === agentId);
+            document.getElementById('detail-title').textContent = agent.name;
+            document.getElementById('detail-content').innerHTML = `
+                <div class="space-y-6">
+                    <div>
+                        <h4 class="text-sm font-medium text-slate-400 mb-2">Description</h4>
+                        <p class="text-slate-300">${agent.description}</p>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-medium text-slate-400 mb-2">System Prompt</h4>
+                        <pre class="bg-slate-900 rounded-lg p-4 text-sm whitespace-pre-wrap">${agent.prompt}</pre>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-medium text-slate-400 mb-2">Available Tools</h4>
+                        <div class="space-y-2">
+                            ${agent.toolIds.map(tid => {
+                const tool = mockData.tools.find(t => t.id === tid);
+                return `
+                                    <div class="flex items-center gap-3 p-3 bg-slate-700/30 rounded-lg">
+                                        <span>🔧</span>
+                                        <div>
+                                            <div class="font-medium text-sm">${tool?.name}</div>
+                                            <div class="text-xs text-slate-500">${tool?.description}</div>
+                                        </div>
+                                    </div>
+                                `;
+            }).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            openDetail();
+        }
+
+        // ==================== Session View ====================
+        function renderSessions() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="grid gap-4">
+                    ${mockData.sessions.map(session => {
+                const ticket = mockData.tickets.find(t => t.id === session.ticketId);
+                return `
+                            <div onclick="showSessionDetail('${session.id}')"
+                                 class="bg-slate-800 rounded-xl p-4 border border-slate-700 hover:border-primary/50 cursor-pointer transition">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-slate-500 font-mono text-sm">#${session.id.slice(-3)}</span>
+                                        ${getStatusBadge(session.status)}
+                                    </div>
+                                    <span class="text-sm text-slate-400">${session.messages.length} messages</span>
+                                </div>
+                                <div class="text-sm text-slate-400">
+                                    Ticket: ${ticket?.context?.goal || session.ticketId.slice(0, 8)}
+                                </div>
+                            </div>
+                        `;
+            }).join('')}
+                </div>
+            `;
+        }
+
+        function showSessionDetail(sessionId) {
+            const session = mockData.sessions.find(s => s.id === sessionId);
+            document.getElementById('detail-title').textContent = `Session #${session.id.slice(-3)}`;
+            document.getElementById('detail-content').innerHTML = `
+                <div class="space-y-6">
+                    <div class="flex items-center gap-3">
+                        ${getStatusBadge(session.status, true)}
+                        <span class="text-slate-400 text-sm">Created ${formatTime(session.createdAt)}</span>
+                    </div>
+                    
+                    <div>
+                        <h4 class="text-sm font-medium text-slate-400 mb-2">Context</h4>
+                        <pre class="bg-slate-900 rounded-lg p-3 text-xs overflow-x-auto">${JSON.stringify(session.context, null, 2)}</pre>
+                    </div>
+
+                    <div>
+                        <h4 class="text-sm font-medium text-slate-400 mb-3">Messages</h4>
+                        <div class="space-y-3">
+                            ${session.messages.map(msg => `
+                                <div class="${getMsgAlign(msg.role)}">
+                                    <div class="${getMsgStyle(msg.role)}">
+                                        <div class="text-xs text-slate-500 mb-1">${msg.role} • ${formatTime(msg.timestamp)}</div>
+                                        <div class="text-sm whitespace-pre-wrap">${formatMsgContent(msg)}</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            openDetail();
+        }
+
+        // ==================== Tool View ====================
+        function renderTools() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    ${mockData.tools.map(tool => `
+                        <div onclick="showToolDetail('${tool.id}')"
+                             class="bg-slate-800 rounded-xl p-5 border border-slate-700 hover:border-primary/50 cursor-pointer transition">
+                            <div class="flex items-center gap-3 mb-3">
+                                <div class="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center text-lg">🔧</div>
+                                <div>
+                                    <h3 class="font-semibold font-mono">${tool.name}</h3>
+                                </div>
+                            </div>
+                            <p class="text-sm text-slate-400">${tool.description}</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function showToolDetail(toolId) {
+            const tool = mockData.tools.find(t => t.id === toolId);
+            document.getElementById('detail-title').textContent = tool.name;
+            document.getElementById('detail-content').innerHTML = `
+                <div class="space-y-6">
+                    <div>
+                        <h4 class="text-sm font-medium text-slate-400 mb-2">Description</h4>
+                        <p class="text-slate-300">${tool.description}</p>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-medium text-slate-400 mb-2">Input Schema</h4>
+                        <pre class="bg-slate-900 rounded-lg p-4 text-sm overflow-x-auto">${JSON.stringify(tool.schema, null, 2)}</pre>
+                    </div>
+                </div>
+            `;
+            openDetail();
+        }
+
+        // ==================== Actions ====================
+        function createTicket() {
+            alert('🚧 Create Ticket dialog - Coming soon!\n\nFields:\n- Select Agent\n- Params (JSON)\n- Context (JSON)');
+        }
+
+        function resumeTicket(ticketId) {
+            const ticket = mockData.tickets.find(t => t.id === ticketId);
+            ticket.status = 'running';
+            const session = mockData.sessions.find(s => s.id === ticket.currentSessionId);
+            if (session) session.status = 'active';
+            showTicketDetail(ticketId);
+            showToast('Ticket resumed!', 'success');
+        }
+
+        function resetTicket(ticketId) {
+            if (!confirm('This will archive the current session and create a new one. Continue?')) return;
+            const ticket = mockData.tickets.find(t => t.id === ticketId);
+            ticket.status = 'pending';
+            ticket.steps = [];
+            const session = mockData.sessions.find(s => s.id === ticket.currentSessionId);
+            if (session) session.status = 'completed';
+            showTicketDetail(ticketId);
+            showToast('Ticket reset!', 'success');
+        }
+
+        function sendHumanInput(sessionId) {
+            const input = document.getElementById('human-input');
+            if (!input.value.trim()) return;
+
+            const session = mockData.sessions.find(s => s.id === sessionId);
+            session.messages.push({
+                id: session.messages.length + 1,
+                role: 'user',
+                content: input.value,
+                timestamp: new Date().toISOString()
+            });
+            session.status = 'active';
+
+            const ticket = mockData.tickets.find(t => t.currentSessionId === sessionId);
+            if (ticket) ticket.status = 'running';
+
+            showTicketDetail(ticket.id);
+            showToast('Message sent! Ticket resumed.', 'success');
+        }
+
+        // ==================== Utilities ====================
+        function openDetail() {
+            document.getElementById('detail-panel').classList.remove('translate-x-full');
+        }
+
+        function closeDetail() {
+            document.getElementById('detail-panel').classList.add('translate-x-full');
+        }
+
+        function getStatusBadge(status, large = false) {
+            const styles = {
+                pending: 'bg-yellow-500/20 text-yellow-400',
+                running: 'bg-blue-500/20 text-blue-400',
+                suspended: 'bg-orange-500/20 text-orange-400',
+                active: 'bg-blue-500/20 text-blue-400',
+                completed: 'bg-green-500/20 text-green-400',
+                failed: 'bg-red-500/20 text-red-400'
+            };
+            const icons = {
+                pending: '⏳',
+                running: '▶',
+                suspended: '⏸',
+                active: '▶',
+                completed: '✓',
+                failed: '✕'
+            };
+            const sizeClass = large ? 'px-3 py-1.5 text-sm' : 'px-2 py-0.5 text-xs';
+            const runningClass = status === 'running' || status === 'active' ? 'animate-pulse-dot' : '';
+            return `<span class="${sizeClass} rounded-full ${styles[status]} ${runningClass}">${icons[status]} ${status}</span>`;
+        }
+
+        function getStepDot(status) {
+            const colors = { pending: 'bg-slate-600', running: 'bg-blue-500 animate-pulse', completed: 'bg-green-500', failed: 'bg-red-500' };
+            return `<div class="w-2 h-2 rounded-full ${colors[status]}"></div>`;
+        }
+
+        function getStepIcon(status) {
+            const icons = { pending: '○', running: '◐', completed: '✓', failed: '✕' };
+            const colors = { pending: 'text-slate-500', running: 'text-blue-400 animate-pulse', completed: 'text-green-400', failed: 'text-red-400' };
+            return `<span class="${colors[status]} text-lg">${icons[status]}</span>`;
+        }
+
+        function getMsgAlign(role) {
+            return role === 'user' ? 'flex justify-end' : '';
+        }
+
+        function getMsgStyle(role) {
+            const styles = {
+                system: 'max-w-[90%] bg-slate-700/30 border border-slate-600 rounded-lg p-3',
+                assistant: 'max-w-[90%] bg-primary/20 border border-primary/30 rounded-lg p-3',
+                user: 'max-w-[90%] bg-secondary/20 border border-secondary/30 rounded-lg p-3',
+                tool: 'max-w-[90%] bg-slate-900 border border-slate-700 rounded-lg p-3 font-mono text-xs'
+            };
+            return styles[role] || styles.assistant;
+        }
+
+        function formatMsgContent(msg) {
+            if (msg.role === 'tool') {
+                try {
+                    return JSON.stringify(JSON.parse(msg.content), null, 2);
+                } catch { return msg.content; }
+            }
+            return msg.content;
+        }
+
+        function formatTime(iso) {
+            const d = new Date(iso);
+            return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function showToast(message, type = 'info') {
+            const colors = { success: 'bg-green-600', error: 'bg-red-600', info: 'bg-blue-600' };
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-4 right-4 ${colors[type]} text-white px-4 py-2 rounded-lg shadow-lg z-50 transition-opacity`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 2000);
+        }
+
+        // ==================== Init ====================
+        showView('tickets');
+    </script>
+</body>
+
+</html>

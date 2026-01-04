@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* 全局样式 */
+:root {
+  --color-primary: #6366f1;
+  --color-secondary: #8b5cf6;
+}
+
+body {
+  @apply bg-slate-900 text-slate-100 antialiased;
+}
+
+/* 滚动条样式 */
+.scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+
+.scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  background-color: #475569;
+  border-radius: 3px;
+}
+
+/* 动画 */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
