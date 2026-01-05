@@ -23,7 +23,7 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }) {
 
     const fetchAgents = async () => {
         try {
-            const res = await fetch("http://localhost:8000/api/v1/agents");
+            const res = await fetch("http://localhost:8000/api/agents");
             if (!res.ok) throw new Error("Failed to fetch agents");
             const data = await res.json();
             setAgents(data);

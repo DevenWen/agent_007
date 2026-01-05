@@ -48,8 +48,8 @@ export default function AgentsPage() {
                             key={agent.id}
                             onClick={() => loadAgentDetail(agent.id)}
                             className={`bg-slate-800 rounded-xl p-5 border cursor-pointer transition ${selectedAgent?.id === agent.id
-                                    ? 'border-indigo-500'
-                                    : 'border-slate-700 hover:border-slate-600'
+                                ? 'border-indigo-500'
+                                : 'border-slate-700 hover:border-slate-600'
                                 }`}
                         >
                             <div className="flex items-center gap-3 mb-3">
@@ -86,15 +86,25 @@ export default function AgentsPage() {
                         </pre>
                     </div>
 
-                    {selectedAgent.tool_ids?.length > 0 && (
+                    {(selectedAgent.tools?.length > 0 || selectedAgent.tool_ids?.length > 0) && (
                         <div>
-                            <h4 className="text-sm font-medium text-slate-400 mb-2">Tools ({selectedAgent.tool_ids.length})</h4>
+                            <h4 className="text-sm font-medium text-slate-400 mb-2">
+                                Tools ({selectedAgent.tools?.length || selectedAgent.tool_ids?.length})
+                            </h4>
                             <div className="flex flex-wrap gap-2">
-                                {selectedAgent.tool_ids.map(id => (
-                                    <span key={id} className="px-2 py-1 bg-slate-700 rounded text-xs">
-                                        🔧 {id.replace('tool-', '')}
-                                    </span>
-                                ))}
+                                {selectedAgent.tools ? (
+                                    selectedAgent.tools.map(tool => (
+                                        <span key={tool.id} className="px-2 py-1 bg-slate-700 rounded text-xs" title={tool.description}>
+                                            🔧 {tool.name}
+                                        </span>
+                                    ))
+                                ) : (
+                                    selectedAgent.tool_ids.map(id => (
+                                        <span key={id} className="px-2 py-1 bg-slate-700 rounded text-xs">
+                                            🔧 {id.replace('tool-', '')}
+                                        </span>
+                                    ))
+                                )}
                             </div>
                         </div>
                     )}
