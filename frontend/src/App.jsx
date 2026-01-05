@@ -3,6 +3,7 @@ import Layout from './components/Layout'
 import TicketsPage from './pages/TicketsPage'
 import AgentsPage from './pages/AgentsPage'
 import SessionsPage from './pages/SessionsPage'
+import SessionDetailPage from './pages/SessionDetailPage'
 import ToolsPage from './pages/ToolsPage'
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
         <Route path="/tickets" element={<TicketsPage />} />
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/sessions" element={<SessionsPage />} />
+        <Route path="/sessions/:id" element={<SessionDetailPage />} />
         <Route path="/tools" element={<ToolsPage />} />
       </Routes>
     </Layout>
