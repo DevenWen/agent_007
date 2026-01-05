@@ -140,7 +140,7 @@ curl -X POST http://localhost:8000/api/agents \
   -d '{
     "name": "Math Agent",
     "prompt": "你是一个数学助手，使用 calculate 工具进行计算。",
-    "tool_ids": ["tool-calculator"]
+    "tool_ids": ["7ab16d70-7f8e-43f4-9259-ec4eff99c552"]
   }'
 ```
 
@@ -156,7 +156,7 @@ AGENT_ID=$(curl -s http://localhost:8000/api/agents | jq -r '.[-1].id')
 curl -X POST http://localhost:8000/api/tickets \
   -H "Content-Type: application/json" \
   -d "{
-    \"agent_id\": \"$AGENT_ID\",
+    \"agent_id\": \"3d8aedd0-c917-4455-89b6-3488fd530447\",
     \"params\": {\"question\": \"计算 (15 + 25) * 2\"}
   }"
 ```
