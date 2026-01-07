@@ -40,8 +40,13 @@ def setup_logging():
     root_logger.addHandler(file_handler)
 
     # 降低第三方库的日志级别
-    # logging.getLogger("httpx").setLevel(logging.WARNING)
-    # logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("watchfiles").setLevel(logging.WARNING)
+
+    # 统一 Uvicorn 日志格式
+    # Uvicorn 默认会设置自己的 handlers，我们需要覆盖它们
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uv_logger = logging.getLogger(logger_name)
+        uv_logger.handlers = root_logger.handlers
+        uv_logger.propagate = False
 
     logging.info(f"Logging initialized, log file: {log_file}")

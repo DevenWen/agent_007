@@ -11,7 +11,9 @@ class ExecutorFactory:
     def create_executor(ticket_id: str, session_id: str) -> IExecutor:
         """创建 Executor 实例"""
         # 可以通过环境变量或配置切换 Executor 实现
-        executor_type = os.getenv("EXECUTOR_TYPE", "anthropic")  # default to anthropic
+        executor_type = os.getenv(
+            "EXECUTOR_TYPE", "anthropic_api"
+        )  # default to anthropic
 
         if executor_type == "claude_agent_sdk":
             return SDKExecutor(ticket_id, session_id)
