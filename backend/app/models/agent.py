@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, List
 
-from sqlalchemy import String, Text, DateTime
+from sqlalchemy import String, Text, DateTime, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -24,6 +24,14 @@ class Agent(Base):
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     # 新增 params_schema 字段，存储 JSON 字符串
     params_schema: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # PRD 0.0.3: Skill System 新增字段
+    skill_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    max_iterations: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
+    default_params: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # JSON string
+    tool_names: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

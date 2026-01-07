@@ -64,4 +64,8 @@ export const api = {
     // Tools
     listTools: () => request('/tools'),
     getTool: (id) => request(`/tools/${id}`),
+
+    // Skills (PRD 0.0.3)
+    listSkills: () => request('/skills'),
+    getSkill: (name) => request(`/skills/${name}`),
 }

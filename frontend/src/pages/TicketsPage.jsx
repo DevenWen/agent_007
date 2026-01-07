@@ -22,6 +22,12 @@ export default function TicketsPage() {
             if (tickets.length === 0) setLoading(true)
             const data = await api.listTickets()
             setTickets(data)
+
+            // Also refresh selectedTicket if one is selected
+            if (selectedTicket) {
+                const updatedTicket = await api.getTicket(selectedTicket.id)
+                setSelectedTicket(updatedTicket)
+            }
         } catch (err) {
             console.error(err)
             // setError(err.message) // Don't block UI on background refresh fail

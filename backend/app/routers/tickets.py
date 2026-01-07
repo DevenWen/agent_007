@@ -140,22 +140,35 @@ async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)):
 @router.post("", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
 async def create_ticket(req: CreateTicketRequest, db: AsyncSession = Depends(get_db)):
     """创建 Ticket"""
+    from app.services.ticket_validator import validate_and_merge_params
+    from jsonschema import ValidationError
+
     # 验证 Agent 存在
     result = await db.execute(select(Agent).where(Agent.id == req.agent_id))
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
+    # 验证并合并参数
+    try:
+        final_params = validate_and_merge_params(
+            agent.default_params, agent.params_schema, req.params
+        )
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422, detail=f"Parameter validation failed: {e.message}"
+        )
+
     ticket = Ticket(
         id=str(uuid.uuid4()),
         agent_id=req.agent_id,
         status=TicketStatus.PENDING.value,
-        params=json.dumps(req.params) if req.params else None,
+        params=json.dumps(final_params) if final_params else None,
         context=json.dumps(req.context) if req.context else None,
     )
 
     db.add(ticket)
-    await db.flush()
+    await db.commit()
 
     # 重新加载关系
     result = await db.execute(
@@ -231,11 +244,28 @@ async def reset_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)):
         ]:
             session.status = SessionStatus.COMPLETED.value
 
+    # 清空 Steps (PRD 0.0.3: Reset Ticket clears steps)
+    for step in ticket.steps:
+        await db.delete(step)
+
     # 重置 Ticket 状态
     ticket.status = TicketStatus.PENDING.value
     ticket.error_message = None
 
-    await db.flush()
+    await db.commit()
+
+    # 重新加载以获取更新后的数据
+    result = await db.execute(
+        select(Ticket)
+        .options(
+            selectinload(Ticket.agent),
+            selectinload(Ticket.sessions),
+            selectinload(Ticket.steps),
+        )
+        .where(Ticket.id == ticket_id)
+    )
+    ticket = result.scalar_one()
+
     return _build_ticket_response(ticket)
 
 

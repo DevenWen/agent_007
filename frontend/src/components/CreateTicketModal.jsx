@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
 import DynamicForm from "./DynamicForm";
+import { api } from "../api/client";
 
 export default function CreateTicketModal({ isOpen, onClose, onCreated }) {
     const [agents, setAgents] = useState([]);
     const [selectedAgentId, setSelectedAgentId] = useState("");
+    const [selectedAgent, setSelectedAgent] = useState(null);
     const [params, setParams] = useState({});
     const [context, setContext] = useState("{}");
     const [loading, setLoading] = useState(false);
@@ -15,6 +17,7 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }) {
             fetchAgents();
             // Reset state
             setSelectedAgentId("");
+            setSelectedAgent(null);
             setParams({});
             setContext("{}");
             setError(null);
@@ -23,9 +26,7 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }) {
 
     const fetchAgents = async () => {
         try {
-            const res = await fetch("http://localhost:8000/api/agents");
-            if (!res.ok) throw new Error("Failed to fetch agents");
-            const data = await res.json();
+            const data = await api.listAgents();
             setAgents(data);
         } catch (err) {
             console.error(err);
@@ -33,7 +34,26 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }) {
         }
     };
 
-    const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+    // Fetch agent details when selected (to get default_params)
+    const handleAgentSelect = async (agentId) => {
+        setSelectedAgentId(agentId);
+        setSelectedAgent(null);
+        setParams({});
+
+        if (!agentId) return;
+
+        try {
+            const agentDetails = await api.getAgent(agentId);
+            setSelectedAgent(agentDetails);
+
+            // Pre-fill with default_params
+            if (agentDetails.default_params) {
+                setParams(agentDetails.default_params);
+            }
+        } catch (err) {
+            console.error("Failed to load agent details:", err);
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -48,15 +68,8 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }) {
                 throw new Error("Invalid Context JSON");
             }
 
-            // 如果没有 schema，params 可能是通过 raw textarea 输入的（这里暂未实现 raw input fallback for params, assume schema exists or empty）
-            // 如果 user story 要求无 schema 回退：
-            // "JSON Fallback: If an agent has no params_schema, a JSON text area is provided"
-
             let finalParams = params;
             if (!selectedAgent?.params_schema) {
-                // 如果没有 schema，params 应该是一个 JSON string，需要解析
-                // 这里我们需要一个 raw params input
-                // 为了简化，我们暂时复用 context 的逻辑或者 params state 当作 string
                 if (typeof params === 'string') {
                     try {
                         finalParams = JSON.parse(params);
@@ -66,22 +79,12 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }) {
                 }
             }
 
-            const res = await fetch("http://localhost:8000/api/v1/tickets", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    agent_id: selectedAgentId,
-                    params: finalParams,
-                    context: parsedContext,
-                }),
+            const newTicket = await api.createTicket({
+                agent_id: selectedAgentId,
+                params: finalParams,
+                context: parsedContext,
             });
 
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.detail || "Failed to create ticket");
-            }
-
-            const newTicket = await res.json();
             onCreated(newTicket);
             onClose();
         } catch (err) {
@@ -90,6 +93,10 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }) {
             setLoading(false);
         }
     };
+
+    // 如果没有 schema，params 可能是通过 raw textarea 输入的（这里暂未实现 raw input fallback for params, assume schema exists or empty）
+    // 如果 user story 要求无 schema 回退：
+    // "JSON Fallback: If an agent has no params_schema, a JSON text area is provided"
 
     if (!isOpen) return null;
 
@@ -104,7 +111,7 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }) {
                     &#8203;
                 </span>
 
-                <div className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div className="relative z-10 inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                     <div className="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                         <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
                             Create New Ticket
@@ -124,17 +131,14 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }) {
                                 </label>
                                 <select
                                     value={selectedAgentId}
-                                    onChange={(e) => {
-                                        setSelectedAgentId(e.target.value);
-                                        setParams({}); // reset params
-                                    }}
+                                    onChange={(e) => handleAgentSelect(e.target.value)}
                                     className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                     required
                                 >
                                     <option value="">-- Choose an Agent --</option>
                                     {agents.map((agent) => (
                                         <option key={agent.id} value={agent.id}>
-                                            {agent.name}
+                                            {agent.name} {agent.skill_name ? `(${agent.skill_name})` : ''}
                                         </option>
                                     ))}
                                 </select>

@@ -1,6 +1,7 @@
 """Agent Model 单元测试"""
 
 import pytest
+import json
 
 from app.models.agent import Agent
 
@@ -66,3 +67,71 @@ class TestAgentModel:
 
         assert agent.id == "agent-minimal"
         assert agent.description is None  # 可选字段
+
+    # PRD 0.0.3: Skill System 相关测试
+    async def test_agent_with_skill_name(self, db_session):
+        """测试 Agent 关联 Skill"""
+        agent = Agent(
+            id="agent-skill",
+            name="Skill Agent",
+            prompt="Test",
+            skill_name="data_analyst",
+        )
+
+        db_session.add(agent)
+        await db_session.commit()
+        await db_session.refresh(agent)
+
+        assert agent.skill_name == "data_analyst"
+
+    async def test_agent_max_iterations_default(self, db_session):
+        """测试 max_iterations 默认值为 10"""
+        agent = Agent(
+            id="agent-iter",
+            name="Iteration Agent",
+            prompt="Test",
+        )
+
+        db_session.add(agent)
+        await db_session.commit()
+        await db_session.refresh(agent)
+
+        assert agent.max_iterations == 10
+
+    async def test_agent_with_default_params(self, db_session):
+        """测试 Agent 带有 default_params"""
+        default_params = {"repo": "github.com/test", "branch": "main"}
+        agent = Agent(
+            id="agent-params",
+            name="Params Agent",
+            prompt="Test",
+            default_params=json.dumps(default_params),
+        )
+
+        db_session.add(agent)
+        await db_session.commit()
+        await db_session.refresh(agent)
+
+        assert agent.default_params is not None
+        loaded_params = json.loads(agent.default_params)
+        assert loaded_params["repo"] == "github.com/test"
+        assert loaded_params["branch"] == "main"
+
+    async def test_agent_with_tool_names(self, db_session):
+        """测试 Agent 带有 tool_names"""
+        tool_names = ["read_file", "search_code", "http_request"]
+        agent = Agent(
+            id="agent-tools",
+            name="Tools Agent",
+            prompt="Test",
+            tool_names=json.dumps(tool_names),
+        )
+
+        db_session.add(agent)
+        await db_session.commit()
+        await db_session.refresh(agent)
+
+        assert agent.tool_names is not None
+        loaded_tools = json.loads(agent.tool_names)
+        assert len(loaded_tools) == 3
+        assert "read_file" in loaded_tools

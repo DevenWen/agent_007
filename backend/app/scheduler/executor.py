@@ -162,7 +162,9 @@ class AnthropicExecutor(IExecutor):
         self, db, session: Session, agent: Agent, ticket: Ticket
     ):
         """添加系统消息"""
-        # 构建系统提示词
+        from app.services.prompt_compiler import compile_system_message
+
+        # 构建任务上下文
         context_str = ""
         if ticket.context:
             ctx = (
@@ -172,16 +174,24 @@ class AnthropicExecutor(IExecutor):
             )
             context_str = f"\n\n## 任务上下文\n```json\n{json.dumps(ctx, ensure_ascii=False, indent=2)}\n```"
 
+        # 构建任务参数
         params_str = ""
+        params_dict = {}
         if ticket.params:
-            params = (
+            params_dict = (
                 json.loads(ticket.params)
                 if isinstance(ticket.params, str)
                 else ticket.params
             )
-            params_str = f"\n\n## 任务参数\n```json\n{json.dumps(params, ensure_ascii=False, indent=2)}\n```"
+            params_str = f"\n\n## 任务参数\n```json\n{json.dumps(params_dict, ensure_ascii=False, indent=2)}\n```"
 
-        system_content = f"{agent.prompt}{context_str}{params_str}"
+        # 使用 prompt_compiler 编译完整的 system message
+        # Merge Strategy: System Prompt + Skill Content + Agent Prompt (rendered with params)
+        compiled_prompt = compile_system_message(
+            skill_name=agent.skill_name, agent_prompt=agent.prompt, params=params_dict
+        )
+
+        system_content = f"{compiled_prompt}{context_str}{params_str}"
 
         message = Message(
             session_id=session.id,

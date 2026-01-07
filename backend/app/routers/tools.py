@@ -1,6 +1,5 @@
 """Tools API Router"""
 
-import json
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,7 +18,7 @@ async def list_tools(db: AsyncSession = Depends(get_db)):
     """获取所有 Tool 列表"""
     result = await db.execute(select(Tool).order_by(Tool.name))
     tools = result.scalars().all()
-    return [ToolResponse.from_orm_with_schema(t) for t in tools]
+    return [ToolResponse.model_validate(t) for t in tools]
 
 
 @router.get("/{tool_id}", response_model=ToolResponse)
@@ -30,4 +29,4 @@ async def get_tool(tool_id: str, db: AsyncSession = Depends(get_db)):
     if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
 
-    return ToolResponse.from_orm_with_schema(tool)
+    return ToolResponse.model_validate(tool)

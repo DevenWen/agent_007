@@ -1,6 +1,7 @@
 """Agents API Router"""
 
 import uuid
+import json
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,22 +11,23 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.agent import Agent
-from app.models.tool import Tool
 from app.schemas.agent import (
-    AgentSummary,
+    AgentCreate,
+    AgentUpdate,
     AgentResponse,
-    CreateAgentRequest,
-    UpdateAgentRequest,
 )
-from app.schemas.tool import ToolSummary
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
 
 
-@router.get("", response_model=List[AgentSummary])
+@router.get("", response_model=List[AgentResponse])
 async def list_agents(db: AsyncSession = Depends(get_db)):
     """获取所有 Agent 列表"""
-    result = await db.execute(select(Agent).order_by(Agent.created_at.desc()))
+    result = await db.execute(
+        select(Agent)
+        .options(selectinload(Agent.tools))
+        .order_by(Agent.created_at.desc())
+    )
     agents = result.scalars().all()
     return agents
 
@@ -40,63 +42,40 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    return AgentResponse(
-        id=agent.id,
-        name=agent.name,
-        description=agent.description,
-        prompt=agent.prompt,
-        tool_ids=[t.id for t in agent.tools],
-        tools=[ToolSummary.model_validate(t) for t in agent.tools],
-        created_at=agent.created_at,
-        updated_at=agent.updated_at,
-    )
+    return agent
 
 
 @router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
-async def create_agent(req: CreateAgentRequest, db: AsyncSession = Depends(get_db)):
+async def create_agent(req: AgentCreate, db: AsyncSession = Depends(get_db)):
     """创建 Agent"""
     import logging
 
     logger = logging.getLogger(__name__)
 
-    logger.info(f"Creating agent with tool_ids: {req.tool_ids}")
+    logger.info(f"Creating agent with skill_name: {req.skill_name}")
 
     agent = Agent(
         id=str(uuid.uuid4()),
         name=req.name,
         description=req.description,
         prompt=req.prompt,
+        params_schema=req.params_schema,
+        skill_name=req.skill_name,
+        max_iterations=req.max_iterations,
+        default_params=json.dumps(req.default_params) if req.default_params else None,
+        tool_names=json.dumps(req.tool_names) if req.tool_names else None,
     )
-
-    # 关联 Tools
-    tools_list = []
-    if req.tool_ids:
-        result = await db.execute(select(Tool).where(Tool.id.in_(req.tool_ids)))
-        tools = result.scalars().all()
-        logger.info(f"Found {len(tools)} tools from DB: {[t.id for t in tools]}")
-        tools_list = list(tools)
-        agent.tools = tools_list
-
-    logger.info(f"Agent tools after assignment: {[t.id for t in tools_list]}")
 
     db.add(agent)
-    await db.flush()
+    await db.commit()
+    await db.refresh(agent, ["tools"])
 
-    return AgentResponse(
-        id=agent.id,
-        name=agent.name,
-        description=agent.description,
-        prompt=agent.prompt,
-        tool_ids=[t.id for t in tools_list],
-        tools=[ToolSummary.model_validate(t) for t in tools_list],
-        created_at=agent.created_at,
-        updated_at=agent.updated_at,
-    )
+    return agent
 
 
 @router.put("/{agent_id}", response_model=AgentResponse)
 async def update_agent(
-    agent_id: str, req: UpdateAgentRequest, db: AsyncSession = Depends(get_db)
+    agent_id: str, req: AgentUpdate, db: AsyncSession = Depends(get_db)
 ):
     """更新 Agent"""
     result = await db.execute(
@@ -113,23 +92,21 @@ async def update_agent(
         agent.description = req.description
     if req.prompt is not None:
         agent.prompt = req.prompt
-    if req.tool_ids is not None:
-        result = await db.execute(select(Tool).where(Tool.id.in_(req.tool_ids)))
-        tools = result.scalars().all()
-        agent.tools = list(tools)
+    if req.params_schema is not None:
+        agent.params_schema = req.params_schema
+    if req.skill_name is not None:
+        agent.skill_name = req.skill_name
+    if req.max_iterations is not None:
+        agent.max_iterations = req.max_iterations
+    if req.default_params is not None:
+        agent.default_params = json.dumps(req.default_params)
+    if req.tool_names is not None:
+        agent.tool_names = json.dumps(req.tool_names)
 
-    await db.flush()
+    await db.commit()
+    await db.refresh(agent, ["tools"])
 
-    return AgentResponse(
-        id=agent.id,
-        name=agent.name,
-        description=agent.description,
-        prompt=agent.prompt,
-        tool_ids=[t.id for t in agent.tools],
-        tools=[ToolSummary.model_validate(t) for t in agent.tools],
-        created_at=agent.created_at,
-        updated_at=agent.updated_at,
-    )
+    return agent
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -141,3 +118,4 @@ async def delete_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Agent not found")
 
     await db.delete(agent)
+    await db.commit()

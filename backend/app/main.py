@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from app.config import CORS_ORIGINS, API_PREFIX  # noqa: E402
 from app.database import init_db  # noqa: E402
-from app.routers import agents, tools, tickets, sessions  # noqa: E402
+from app.routers import agents, tools, tickets, sessions, skills  # noqa: E402
 
 # 导入所有 tools 模块以触发注册
 # 注意：这很重要，否则 registry 中为空
@@ -79,6 +79,7 @@ app.include_router(agents.router, prefix=API_PREFIX)
 app.include_router(tools.router, prefix=API_PREFIX)
 app.include_router(tickets.router, prefix=API_PREFIX)
 app.include_router(sessions.router, prefix=API_PREFIX)
+app.include_router(skills.router, prefix=API_PREFIX)
 
 
 @app.get("/health")

@@ -2,10 +2,9 @@
 
 from app.schemas.common import ErrorResponse
 from app.schemas.agent import (
-    AgentSummary,
+    AgentCreate,
+    AgentUpdate,
     AgentResponse,
-    CreateAgentRequest,
-    UpdateAgentRequest,
 )
 from app.schemas.tool import ToolResponse
 from app.schemas.ticket import (
@@ -23,10 +22,9 @@ from app.schemas.session import (
 
 __all__ = [
     "ErrorResponse",
-    "AgentSummary",
+    "AgentCreate",
+    "AgentUpdate",
     "AgentResponse",
-    "CreateAgentRequest",
-    "UpdateAgentRequest",
     "ToolResponse",
     "TicketSummary",
     "TicketResponse",
