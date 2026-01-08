@@ -93,6 +93,9 @@ async def fail_task(args: dict) -> dict:
     return {"content": [{"type": "text", "text": f"任务已标记为失败。错误: {error}"}]}
 
 
+# TODO 增加要给完成 step 的 tools
+
+
 @register_tool(
     name="add_step",
     description="添加一个任务步骤。用于记录任务的子步骤进度。",

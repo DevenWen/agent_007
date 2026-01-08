@@ -50,6 +50,18 @@ SYSTEM_TOOLS = [
         },
     },
     {
+        "name": "complete_step",
+        "description": "标记步骤完成。当步骤目标已达成时调用此工具。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "summary": {"type": "string", "description": "步骤完成摘要"},
+                "result": {"type": "object", "description": "任务结果数据（可选）"},
+            },
+            "required": ["summary"],
+        },
+    },
+    {
         "name": "complete_task",
         "description": "标记任务完成。当任务目标已达成时调用此工具。",
         "input_schema": {
@@ -72,7 +84,7 @@ SYSTEM_TOOLS = [
     },
     {
         "name": "add_step",
-        "description": "添加一个任务步骤。用于记录任务的子步骤进度。",
+        "description": "添加一个步骤。用于记录步骤进度。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -201,6 +213,17 @@ class AnthropicExecutor(IExecutor):
         )
         db.add(message)
         session.messages.append(message)
+
+        # 添加初始用户消息（Anthropic API 要求第一条非系统消息必须是 user）
+        user_message = Message(
+            session_id=session.id,
+            role=MessageRole.USER.value,
+            content="请开始执行任务。",
+            timestamp=datetime.utcnow(),
+        )
+        db.add(user_message)
+        session.messages.append(user_message)
+
         await db.flush()
 
     async def _execute_loop(self, db, ticket: Ticket, session: Session, agent: Agent):
@@ -208,7 +231,12 @@ class AnthropicExecutor(IExecutor):
         import anthropic
 
         # 初始化 Anthropic 客户端
-        client = anthropic.Anthropic()
+        base_url = os.getenv("ANTHROPIC_BASE_URL")
+        client = (
+            anthropic.Anthropic(base_url=base_url)
+            if base_url
+            else anthropic.Anthropic()
+        )
 
         # 获取 Agent 可用的工具
         logger.info(
@@ -228,6 +256,8 @@ class AnthropicExecutor(IExecutor):
 
             # 构建消息历史
             messages = self._build_messages(session)
+
+            logger.info(f"Messages history: {str(messages)}")
 
             # 调用 Claude API
             try:
@@ -275,40 +305,59 @@ class AnthropicExecutor(IExecutor):
     def _build_messages(self, session: Session) -> list:
         """构建 API 消息格式"""
         messages = []
+        pending_tool_results = []  # 收集连续的工具结果
+
         for msg in sorted(session.messages, key=lambda m: m.timestamp):
             if msg.role == MessageRole.SYSTEM.value:
                 continue  # 系统消息单独传
 
             if msg.role == MessageRole.USER.value:
+                # 先刷新 pending tool results
+                if pending_tool_results:
+                    messages.append({"role": "user", "content": pending_tool_results})
+                    pending_tool_results = []
                 messages.append({"role": "user", "content": msg.content})
             elif msg.role == MessageRole.ASSISTANT.value:
+                # 先刷新 pending tool results
+                if pending_tool_results:
+                    messages.append({"role": "user", "content": pending_tool_results})
+                    pending_tool_results = []
                 # 尝试解析为 content blocks
                 try:
                     content = json.loads(msg.content)
                     if isinstance(content, list):
-                        messages.append({"role": "assistant", "content": content})
+                        # 过滤掉 thinking 类型的 block (Anthropic API 不接受)
+                        filtered_content = [
+                            block
+                            for block in content
+                            if block.get("type") != "thinking"
+                        ]
+                        if filtered_content:
+                            messages.append(
+                                {"role": "assistant", "content": filtered_content}
+                            )
                     else:
                         messages.append({"role": "assistant", "content": msg.content})
                 except json.JSONDecodeError:
                     messages.append({"role": "assistant", "content": msg.content})
+
             elif msg.role == MessageRole.TOOL.value:
-                # 工具结果消息
+                # 工具结果消息 - 收集到 pending 列表中
                 try:
                     tool_result = json.loads(msg.content)
-                    messages.append(
+                    pending_tool_results.append(
                         {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "tool_result",
-                                    "tool_use_id": tool_result.get("tool_use_id", ""),
-                                    "content": tool_result.get("result", ""),
-                                }
-                            ],
+                            "type": "tool_result",
+                            "tool_use_id": tool_result.get("tool_use_id", ""),
+                            "content": tool_result.get("result", ""),
                         }
                     )
                 except json.JSONDecodeError:
                     pass
+
+        # 刷新剩余的 pending tool results
+        if pending_tool_results:
+            messages.append({"role": "user", "content": pending_tool_results})
 
         # 如果没有用户消息，添加一个启动消息
         if not messages:
@@ -323,6 +372,9 @@ class AnthropicExecutor(IExecutor):
         for block in response.content:
             if block.type == "text":
                 content_blocks.append({"type": "text", "text": block.text})
+            elif block.type == "thinking":
+                # 处理 ThinkingBlock (Minimax 等模型返回)
+                content_blocks.append({"type": "thinking", "thinking": block.thinking})
             elif block.type == "tool_use":
                 content_blocks.append(
                     {
@@ -358,6 +410,7 @@ class AnthropicExecutor(IExecutor):
         # 检查是否是系统工具
         if tool_name in [
             "request_human_input",
+            "complete_step",
             "complete_task",
             "fail_task",
             "add_step",
@@ -398,13 +451,18 @@ class AnthropicExecutor(IExecutor):
             logger.info(f"Ticket {ticket.id[:8]} suspended for human input")
             return f"任务已挂起，等待用户输入。提示: {tool_input.get('prompt', '')}"
 
-        elif tool_name == "complete_task":
-            # 完成任务
-            ticket.status = TicketStatus.COMPLETED.value
-            session.status = SessionStatus.COMPLETED.value
-            self._should_stop = True
-            logger.info(f"Ticket {ticket.id[:8]} completed")
-            return f"任务已完成。摘要: {tool_input.get('summary', '')}"
+        elif tool_name == "complete_step":
+            # 完成步骤（标记最新的步骤为已完成）
+            if ticket.steps:
+                latest_step = ticket.steps[-1]
+                latest_step.status = StepStatus.COMPLETED.value
+                latest_step.result = json.dumps(
+                    {"summary": tool_input.get("summary", "")}
+                )
+                logger.info(f"Step {latest_step.idx} completed: {latest_step.title}")
+                return f"步骤 {latest_step.idx} 已完成。摘要: {tool_input.get('summary', '')}"
+            else:
+                return "没有找到待完成的步骤"
 
         elif tool_name == "fail_task":
             # 任务失败
@@ -430,6 +488,12 @@ class AnthropicExecutor(IExecutor):
             db.add(step)
             ticket.steps.append(step)
             return f"步骤 {step_idx} 已添加: {step.title}"
+        elif tool_name == "complete_task":
+            ticket.status = TicketStatus.COMPLETED.value
+            session.status = SessionStatus.COMPLETED.value
+            self._should_stop = True
+            logger.info(f"Ticket {ticket.id[:8]} completed")
+            return f"任务已完成。摘要: {tool_input.get('summary', '')}"
 
         return "Unknown system tool"
 
